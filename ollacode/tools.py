@@ -1,4 +1,4 @@
-"""코딩 도구 모듈 — 파일 조작, 검색, 명령 실행, Diff 편집."""
+"""Coding tools module — file operations, search, command execution, diff editing."""
 
 from __future__ import annotations
 
@@ -13,48 +13,48 @@ from typing import Callable, Awaitable, Optional
 
 
 class ToolError(Exception):
-    """도구 실행 중 발생한 오류."""
+    """Error during tool execution."""
 
 
-# ─── 승인이 필요한 도구 목록 ──────────────────────────────────
+# ─── Tools that require user approval ─────────────────────────
 TOOLS_REQUIRING_APPROVAL = {"write_file", "edit_file", "run_command"}
 
 
 class ToolExecutor:
-    """코딩 도구 실행기. workspace_dir 내에서만 동작합니다."""
+    """Coding tool executor. Operates only within workspace_dir."""
 
     def __init__(self, workspace_dir: Path) -> None:
         self.workspace_dir = workspace_dir.resolve()
-        # 승인 콜백: (tool_name, description) -> bool
-        # None이면 자동 승인 (auto-approve 모드)
+        # Approval callback: (tool_name, description) -> bool
+        # None means auto-approve mode
         self.approval_callback: Optional[
             Callable[[str, str], Awaitable[bool]]
         ] = None
 
     def _resolve_path(self, path_str: str) -> Path:
-        """경로를 workspace 기준으로 해석하고, 탈출을 방지합니다."""
+        """Resolve path relative to workspace and prevent escape."""
         p = Path(path_str)
         if not p.is_absolute():
             p = self.workspace_dir / p
         p = p.resolve()
 
-        # 보안: workspace 외부 접근 차단
+        # Security: block access outside workspace
         if not str(p).startswith(str(self.workspace_dir)):
             raise ToolError(
-                f"⛔ 보안 오류: workspace 외부 경로에 접근할 수 없습니다.\n"
-                f"  요청 경로: {path_str}\n"
-                f"  workspace: {self.workspace_dir}"
+                f"⛔ Security error: cannot access path outside workspace.\n"
+                f"  Requested: {path_str}\n"
+                f"  Workspace: {self.workspace_dir}"
             )
         return p
 
     async def _request_approval(self, tool_name: str, description: str) -> bool:
-        """도구 실행 전 사용자 승인을 요청합니다."""
+        """Request user approval before tool execution."""
         if self.approval_callback is None:
-            return True  # auto-approve 모드
+            return True  # auto-approve mode
         return await self.approval_callback(tool_name, description)
 
     async def execute(self, tool_name: str, params: dict) -> str:
-        """도구를 실행하고 결과를 반환합니다."""
+        """Execute a tool and return the result."""
         handlers = {
             "read_file": self._read_file,
             "write_file": self._write_file,
@@ -67,87 +67,93 @@ class ToolExecutor:
 
         handler = handlers.get(tool_name)
         if handler is None:
-            return f"❌ 알 수 없는 도구: {tool_name}"
+            return f"❌ Unknown tool: {tool_name}"
 
         try:
             return await handler(params)
         except ToolError as e:
             return str(e)
         except Exception as e:
-            return f"❌ 도구 실행 오류 ({tool_name}): {e}"
+            return f"❌ Tool error ({tool_name}): {e}"
 
     async def _read_file(self, params: dict) -> str:
         path = self._resolve_path(params.get("path", ""))
         if not path.exists():
-            return f"❌ 파일을 찾을 수 없습니다: {path}"
+            return f"❌ File not found: {path}"
         if not path.is_file():
-            return f"❌ 파일이 아닙니다: {path}"
+            return f"❌ Not a file: {path}"
 
         try:
             content = path.read_text(encoding="utf-8")
         except UnicodeDecodeError:
-            return f"❌ 바이너리 파일은 읽을 수 없습니다: {path}"
+            return f"❌ Cannot read binary file: {path}"
 
         lines = content.split("\n")
         line_count = len(lines)
-        # 줄 번호 추가
+
+        # Support start_line / end_line params
+        start = max(1, int(params.get("start_line", 1))) - 1
+        end = min(line_count, int(params.get("end_line", 200)))
+        display_lines = lines[start:end]
+
+        # Add line numbers
         numbered = "\n".join(
-            f"{i+1:4d} | {line}" for i, line in enumerate(lines[:500])
+            f"{start+i+1:4d} | {line}" for i, line in enumerate(display_lines)
         )
-        if line_count > 500:
+
+        if line_count > end:
             return (
-                f"📄 **{path.name}** ({line_count}줄, 처음 500줄 표시)\n"
-                f"```\n{numbered}\n```\n... ({line_count - 500}줄 더 있음)"
+                f"📄 **{path.name}** ({line_count} lines, showing L{start+1}-{end})\n"
+                f"```\n{numbered}\n```\n... ({line_count - end} more lines)"
             )
-        return f"📄 **{path.name}** ({line_count}줄)\n```\n{numbered}\n```"
+        return f"📄 **{path.name}** ({line_count} lines)\n```\n{numbered}\n```"
 
     async def _write_file(self, params: dict) -> str:
         path = self._resolve_path(params.get("path", ""))
         content = params.get("content", "")
 
-        # 승인 요청
+        # Request approval
         existed = path.exists()
-        action = "수정" if existed else "생성"
+        action = "modify" if existed else "create"
         line_count = len(content.split("\n"))
-        description = f"📝 파일 {action}: {path.name} ({line_count}줄)"
+        description = f"📝 File {action}: {path.name} ({line_count} lines)"
 
         if existed:
-            # diff 생성
             old_content = path.read_text(encoding="utf-8")
             diff = _generate_diff(old_content, content, path.name)
             description += f"\n{diff}"
 
         if not await self._request_approval("write_file", description):
-            return "⏭️ 사용자가 파일 쓰기를 거부했습니다."
+            return "⏭️ User rejected file write."
 
-        # 부모 디렉토리 생성
+        # Create parent directories
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
-        return f"✅ 파일 {action} 완료: {path.name} ({line_count}줄)"
+        return f"✅ File {action} done: {path.name} ({line_count} lines)"
 
     async def _edit_file(self, params: dict) -> str:
-        """Diff 기반 파일 편집 — search/replace 블록으로 부분 수정."""
+        """Diff-based file editing — partial modification via search/replace."""
         path = self._resolve_path(params.get("path", ""))
         if not path.exists():
-            return f"❌ 파일을 찾을 수 없습니다: {path}"
+            return f"❌ File not found: {path}"
         if not path.is_file():
-            return f"❌ 파일이 아닙니다: {path}"
+            return f"❌ Not a file: {path}"
 
         search = params.get("search", "")
         replace = params.get("replace", "")
 
         if not search:
-            return "❌ 'search' 파라미터가 필요합니다."
+            return "❌ 'search' parameter is required."
 
         try:
             content = path.read_text(encoding="utf-8")
         except UnicodeDecodeError:
-            return f"❌ 바이너리 파일은 편집할 수 없습니다: {path}"
+            return f"❌ Cannot edit binary file: {path}"
 
-        # search 문자열 찾기
+        # Find search string
         count = content.count(search)
         if count == 0:
-            # 유사한 부분 찾기 시도
+            # Try to find similar lines
             close = difflib.get_close_matches(
                 search.split("\n")[0],
                 content.split("\n"),
@@ -156,34 +162,34 @@ class ToolExecutor:
             )
             hint = ""
             if close:
-                hint = "\n유사한 줄:\n" + "\n".join(f"  → {c}" for c in close)
-            return f"❌ 검색 문자열을 찾을 수 없습니다.{hint}"
+                hint = "\nSimilar lines:\n" + "\n".join(f"  → {c}" for c in close)
+            return f"❌ Search string not found.{hint}"
 
         if count > 1:
-            return f"⚠️ 검색 문자열이 {count}번 발견되었습니다. 더 구체적으로 지정해주세요."
+            return f"⚠️ Search string found {count} times. Please be more specific."
 
-        # diff 미리보기 생성
+        # Generate diff preview
         new_content = content.replace(search, replace, 1)
         diff = _generate_diff(content, new_content, path.name)
-        description = f"✏️ 파일 편집: {path.name}\n{diff}"
+        description = f"✏️ Edit file: {path.name}\n{diff}"
 
         if not await self._request_approval("edit_file", description):
-            return "⏭️ 사용자가 편집을 거부했습니다."
+            return "⏭️ User rejected edit."
 
-        # 적용
+        # Apply
         path.write_text(new_content, encoding="utf-8")
-        return f"✅ 파일 편집 완료: {path.name} (1개 변경)"
+        return f"✅ File edited: {path.name} (1 change applied)"
 
     async def _list_directory(self, params: dict) -> str:
         path = self._resolve_path(params.get("path", "."))
         if not path.exists():
-            return f"❌ 디렉토리를 찾을 수 없습니다: {path}"
+            return f"❌ Directory not found: {path}"
         if not path.is_dir():
-            return f"❌ 디렉토리가 아닙니다: {path}"
+            return f"❌ Not a directory: {path}"
 
         entries = sorted(path.iterdir(), key=lambda x: (not x.is_dir(), x.name))
         lines = []
-        for entry in entries[:100]:  # 최대 100개
+        for entry in entries[:100]:
             if entry.name.startswith("."):
                 continue
             icon = "📁" if entry.is_dir() else "📄"
@@ -199,7 +205,7 @@ class ToolExecutor:
             lines.append(f"  {icon} {entry.name}{size}")
 
         total = len(list(path.iterdir()))
-        header = f"📂 **{path.name or '/'}** ({total}개 항목)"
+        header = f"📂 **{path.name or '/'}** ({total} items)"
         return header + "\n" + "\n".join(lines)
 
     async def _search_files(self, params: dict) -> str:
@@ -207,37 +213,37 @@ class ToolExecutor:
         base = self._resolve_path(params.get("path", "."))
 
         if not base.exists():
-            return f"❌ 경로를 찾을 수 없습니다: {base}"
+            return f"❌ Path not found: {base}"
 
         matches = sorted(glob.glob(str(base / "**" / pattern), recursive=True))
-        # workspace 내부만 필터
+        # Filter to workspace only
         matches = [
             m for m in matches
             if str(Path(m).resolve()).startswith(str(self.workspace_dir))
         ]
 
         if not matches:
-            return f"🔍 '{pattern}' 패턴에 일치하는 파일이 없습니다."
+            return f"🔍 No files matching '{pattern}'."
 
         lines = []
         for m in matches[:50]:
             rel = os.path.relpath(m, self.workspace_dir)
             lines.append(f"  📄 {rel}")
 
-        result = f"🔍 '{pattern}' 검색 결과 ({len(matches)}개)"
+        result = f"🔍 '{pattern}' results ({len(matches)} files)"
         if len(matches) > 50:
-            result += f" — 처음 50개만 표시"
+            result += " — showing first 50"
         return result + "\n" + "\n".join(lines)
 
     async def _grep_search(self, params: dict) -> str:
-        """파일 내용에서 텍스트 검색 (grep 대체)."""
+        """Search text inside files (grep alternative)."""
         query = params.get("query", "")
         base = self._resolve_path(params.get("path", "."))
 
         if not query:
-            return "❌ 'query' 파라미터가 필요합니다."
+            return "❌ 'query' parameter is required."
         if not base.exists():
-            return f"❌ 경로를 찾을 수 없습니다: {base}"
+            return f"❌ Path not found: {base}"
 
         results = []
         search_files = []
@@ -245,9 +251,8 @@ class ToolExecutor:
         if base.is_file():
             search_files = [base]
         else:
-            # 재귀적으로 파일 검색 (바이너리/숨김 제외)
+            # Recursive file search (skip binary/hidden)
             for root, dirs, files in os.walk(str(base)):
-                # 숨김/무시 디렉토리 건너뛰기
                 dirs[:] = [
                     d for d in dirs
                     if not d.startswith(".")
@@ -260,7 +265,7 @@ class ToolExecutor:
                     if str(fp.resolve()).startswith(str(self.workspace_dir)):
                         search_files.append(fp)
 
-        for fp in search_files[:500]:  # 최대 500파일 검색
+        for fp in search_files[:500]:
             try:
                 content = fp.read_text(encoding="utf-8")
             except (UnicodeDecodeError, PermissionError):
@@ -270,32 +275,32 @@ class ToolExecutor:
                 if query.lower() in line.lower():
                     rel = os.path.relpath(str(fp), str(self.workspace_dir))
                     results.append(f"  {rel}:{i}: {line.strip()[:120]}")
-                    if len(results) >= 50:
+                    if len(results) >= 20:
                         break
-            if len(results) >= 50:
+            if len(results) >= 20:
                 break
 
         if not results:
-            return f"🔍 '{query}'를 찾을 수 없습니다."
+            return f"🔍 '{query}' not found."
 
-        header = f"🔍 '{query}' 검색 결과 ({len(results)}건)"
+        header = f"🔍 '{query}' results ({len(results)} matches)"
         return header + "\n" + "\n".join(results)
 
     async def _run_command(self, params: dict) -> str:
         command = params.get("command", "")
         if not command:
-            return "❌ 실행할 명령어가 없습니다."
+            return "❌ No command provided."
 
-        # 위험한 명령어 차단
-        dangerous = ["rm -rf /", "mkfs", "dd if=", ":(){", "fork bomb"]
+        # Block dangerous commands
+        dangerous = ["rm -rf /", "mkfs", "dd if=", ":(){ ", "fork bomb"]
         for d in dangerous:
             if d in command.lower():
-                return f"⛔ 위험한 명령어가 감지되었습니다: {command}"
+                return f"⛔ Dangerous command detected: {command}"
 
-        # 승인 요청
-        description = f"⚙️ 명령 실행: `{command}`"
+        # Request approval
+        description = f"⚙️ Run command: `{command}`"
         if not await self._request_approval("run_command", description):
-            return "⏭️ 사용자가 명령 실행을 거부했습니다."
+            return "⏭️ User rejected command execution."
 
         try:
             proc = await asyncio.create_subprocess_shell(
@@ -306,9 +311,9 @@ class ToolExecutor:
             )
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=60.0)
         except asyncio.TimeoutError:
-            return f"⏰ 명령 실행 시간 초과 (60초): {command}"
+            return f"⏰ Command timed out (60s): {command}"
         except Exception as e:
-            return f"❌ 명령 실행 실패: {e}"
+            return f"❌ Command failed: {e}"
 
         result_parts = [f"⚙️ `{command}` (exit code: {proc.returncode})"]
 
@@ -316,22 +321,22 @@ class ToolExecutor:
         stderr_text = stderr.decode("utf-8", errors="replace").strip()
 
         if stdout_text:
-            if len(stdout_text) > 3000:
-                stdout_text = stdout_text[:3000] + "\n... (출력 생략)"
+            if len(stdout_text) > 1500:
+                stdout_text = stdout_text[:1500] + "\n... (output truncated)"
             result_parts.append(f"```\n{stdout_text}\n```")
 
         if stderr_text:
-            if len(stderr_text) > 1500:
-                stderr_text = stderr_text[:1500] + "\n... (stderr 생략)"
+            if len(stderr_text) > 800:
+                stderr_text = stderr_text[:800] + "\n... (stderr truncated)"
             result_parts.append(f"**stderr:**\n```\n{stderr_text}\n```")
 
         return "\n".join(result_parts)
 
 
-# ─── 유틸리티 함수 ────────────────────────────────────────────
+# ─── Utility functions ────────────────────────────────────────
 
 def _generate_diff(old: str, new: str, filename: str = "") -> str:
-    """두 텍스트의 unified diff를 생성합니다."""
+    """Generate a unified diff between two texts."""
     old_lines = old.splitlines(keepends=True)
     new_lines = new.splitlines(keepends=True)
     diff = difflib.unified_diff(
@@ -342,19 +347,18 @@ def _generate_diff(old: str, new: str, filename: str = "") -> str:
     )
     diff_str = "".join(diff)
     if not diff_str:
-        return "(변경사항 없음)"
-    if len(diff_str) > 2000:
-        diff_str = diff_str[:2000] + "\n... (diff 생략)"
+        return "(no changes)"
+    if len(diff_str) > 1000:
+        diff_str = diff_str[:1000] + "\n... (diff truncated)"
     return f"```diff\n{diff_str}\n```"
 
 
 def parse_tool_calls(text: str) -> list[dict]:
-    """LLM 응답에서 도구 호출 블록을 파싱합니다.
+    """Parse tool call blocks from LLM response.
 
     ```tool
     {"tool": "read_file", "path": "some/file.py"}
     ```
-    형식의 블록을 찾아 리스트로 반환합니다.
     """
     tool_blocks = re.findall(r"```tool\s*\n(.+?)\n```", text, re.DOTALL)
     calls = []
