@@ -21,13 +21,13 @@ A local AI coding assistant powered by `qwen3-coder:30b` via Ollama. Chat with y
 
 ```mermaid
 graph TD
-    CLI["🖥️ CLI - Rich\nStreaming + Approval UI"] --> Engine
-    TG["📱 Telegram Bot\nPer-user Sessions"] --> Engine
-    Engine["⚙️ Conversation Engine\nHistory | Tool Orchestration\nAgentic Loop | Project Memory"]
-    Engine --> Ollama["🔗 Ollama Client\nhttpx async"]
-    Engine --> Tools["🛠️ Tool System\n7 tools"]
-    Engine --> Prompts["📋 System Prompt\n+ OLLACODE.md Memory"]
-    Ollama --> Server["🧠 Ollama Server\nlocalhost:11434\nqwen3-coder:30b"]
+    CLI["🖥️ CLI - Rich<br/>Streaming + Approval UI"] --> Engine
+    TG["📱 Telegram Bot<br/>Per-user Sessions"] --> Engine
+    Engine["⚙️ Conversation Engine<br/>History | Tool Orchestration<br/>Agentic Loop | Project Memory"]
+    Engine --> Ollama["🔗 Ollama Client<br/>httpx async"]
+    Engine --> Tools["🛠️ Tool System<br/>7 tools"]
+    Engine --> Prompts["📋 System Prompt<br/>+ OLLACODE.md Memory"]
+    Ollama --> Server["🧠 Ollama Server<br/>localhost:11434<br/>qwen3-coder:30b"]
 
     style CLI fill:#4a9eff,stroke:#2d7cd4,color:#fff
     style TG fill:#0088cc,stroke:#006699,color:#fff
