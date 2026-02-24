@@ -1,0 +1,66 @@
+{
+  "model": "qwen3-coder:30b",
+  "mode": "context-growth",
+  "system_prompt_label": "english",
+  "rounds": 5,
+  "seed": 42,
+  "temperature": 0.0,
+  "timestamp": "2026-02-25T01:33:52.968829",
+  "results": [
+    {
+      "round_num": 1,
+      "prompt_tokens": 331,
+      "output_tokens": 232,
+      "gen_speed": 38.16,
+      "prefill_speed": 339.62,
+      "ttft_ms": 974.6,
+      "total_ms": 7210.6,
+      "memory_mb": 19355.6,
+      "error": ""
+    },
+    {
+      "round_num": 2,
+      "prompt_tokens": 591,
+      "output_tokens": 527,
+      "gen_speed": 36.93,
+      "prefill_speed": 1934.24,
+      "ttft_ms": 305.5,
+      "total_ms": 14748.1,
+      "memory_mb": 19357.3,
+      "error": ""
+    },
+    {
+      "round_num": 3,
+      "prompt_tokens": 1152,
+      "output_tokens": 923,
+      "gen_speed": 35.08,
+      "prefill_speed": 3266.72,
+      "ttft_ms": 352.6,
+      "total_ms": 26936.7,
+      "memory_mb": 19358.3,
+      "error": ""
+    },
+    {
+      "round_num": 4,
+      "prompt_tokens": 2104,
+      "output_tokens": 624,
+      "gen_speed": 32.63,
+      "prefill_speed": 6098.75,
+      "ttft_ms": 345.0,
+      "total_ms": 19671.6,
+      "memory_mb": 19356.3,
+      "error": ""
+    },
+    {
+      "round_num": 5,
+      "prompt_tokens": 2753,
+      "output_tokens": 1071,
+      "gen_speed": 27.27,
+      "prefill_speed": 8401.16,
+      "ttft_ms": 327.7,
+      "total_ms": 40303.7,
+      "memory_mb": 19289.2,
+      "error": ""
+    }
+  ]
+}

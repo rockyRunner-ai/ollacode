@@ -249,7 +249,7 @@ def main() -> None:
         prog="ollacode",
         description="Lightweight CLI coding assistant powered by Ollama",
     )
-    subparsers = parser.add_subparsers(dest="mode", help="Run mode")
+    subparsers = parser.add_subparsers(dest="command", help="Run mode")
 
     # CLI mode (default)
     cli_parser = subparsers.add_parser("cli", help="CLI chat mode")
@@ -267,6 +267,41 @@ def main() -> None:
         "--model", default=None, help="Model to use (default: qwen3-coder:30b)"
     )
 
+    # Benchmark mode
+    bench_parser = subparsers.add_parser("benchmark", help="Ollama performance benchmark")
+    bench_parser.add_argument(
+        "--model", default=None, help="Model to benchmark"
+    )
+    bench_parser.add_argument(
+        "--rounds", type=int, default=10, help="Number of rounds (default: 10)"
+    )
+    bench_parser.add_argument(
+        "--bench-mode", default="context-growth", dest="bench_mode",
+        choices=["context-growth", "sustained"],
+        help="Benchmark mode (default: context-growth)"
+    )
+    bench_parser.add_argument(
+        "--output", default=None, help="Save results to JSON file"
+    )
+    bench_parser.add_argument(
+        "--compare", nargs=2, metavar="FILE",
+        help="Compare two result JSON files"
+    )
+    bench_parser.add_argument(
+        "--workload", default=None, help="Custom workload JSON file"
+    )
+    bench_parser.add_argument(
+        "--system-prompt", default="english",
+        help="System prompt: 'korean', 'english', or path to file"
+    )
+    bench_parser.add_argument(
+        "--seed", type=int, default=42, help="Random seed (default: 42)"
+    )
+    bench_parser.add_argument(
+        "--temperature", type=float, default=0.0,
+        help="Temperature (default: 0.0 for reproducibility)"
+    )
+
     args = parser.parse_args()
     config = Config.load()
 
@@ -274,15 +309,19 @@ def main() -> None:
     if hasattr(args, "model") and args.model:
         config.ollama_model = args.model
 
-    mode = args.mode or "cli"
+    command = args.command or "cli"
 
-    if mode == "cli":
+    if command == "cli":
         auto = getattr(args, "auto_approve", False)
         asyncio.run(run_cli(config, auto_approve=auto))
-    elif mode == "telegram":
+    elif command == "telegram":
         from .telegram_bot import run_telegram_bot
 
         run_telegram_bot(config)
+    elif command == "benchmark":
+        from .benchmark import run_benchmark_cli
+
+        run_benchmark_cli(args)
     else:
         parser.print_help()
 
