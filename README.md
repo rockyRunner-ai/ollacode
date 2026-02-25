@@ -42,7 +42,7 @@ graph TD
 
 ```bash
 # Clone the repo
-git clone https://github.com/rockyRunner-ai/ollacode.git
+git clone https://github.com/rockyRunnr/ollacode.git
 cd ollacode
 
 # Create virtual environment and install
